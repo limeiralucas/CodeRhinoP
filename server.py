@@ -51,21 +51,30 @@ class CustomHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
             sendport = postvars["port"][0]
             tmpdir = tempfile.gettempdir()
             filename = postvars["filename"][0]
+            stderr = ""
             subprocess.check_output(
-                "cd "+tmpdir+" && "+tmppdir+"/avrdude.exe -F -V -c arduino -p ATMEGA328P -P "+sendport+
-                " 115200 -U flash:w"+tmpdir+"/"+filename+":i",
+                "cd "+tmpdir+" && "+tmpdir+"\\avrdude.exe -F -V -c arduino -p ATMEGA328P -P "+sendport+
+                " 115200 -U flash:w:"+tmpdir+"\\"+filename+":i",
                 stderr=subprocess.STDOUT,
                 shell=True)
-            print stderr
+            if(stderr):
+                print stderr
+                self.wfile.write("error")
+                pass
+            else:
+                self.wfile.write("sent")
+                pass
             pass
         elif(msg == "send_programNxt"):
             #send program to nxt brick using nbc
             filename = postvars["filename"][0]
             tmpdir = tempfile.gettempdir()
+            stderr = ""
             subprocess.check_output(
                 "cd "+tmpdir+" && "+tmpdir+"/nbc.exe -d"+filename,
                 stderr=subprocess.STDOUT,
                 shell=True)
+            print stderr
             pass
         elif(msg == "download"):
             #download a file
@@ -103,7 +112,7 @@ class CustomHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
             #writes a binary file on temp dir
             filename = postvars["filename"][0]
             data = postvars["bindata"][0]
-            tmpdir = tmpfile.gettempdir()
+            tmpdir = tempfile.gettempdir()
             try:
                 with open(tmpdir+"/"+filename, "wb") as f:
                     f.write(b''+data)
