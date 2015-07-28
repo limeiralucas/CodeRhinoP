@@ -71,10 +71,16 @@ class CustomHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
             tmpdir = tempfile.gettempdir()
             stderr = ""
             subprocess.check_output(
-                "cd "+tmpdir+" && "+tmpdir+"/nbc.exe -d"+filename,
+                "cd "+tmpdir+" && "+tmpdir+"\\nbc.exe -d "+filename,
                 stderr=subprocess.STDOUT,
                 shell=True)
-            print stderr
+            if(stderr):
+                print stderr
+                self.wfile.write("error")
+                pass
+            else:
+                self.wfile.write("sent")
+                pass
             pass
         elif(msg == "download"):
             #download a file
