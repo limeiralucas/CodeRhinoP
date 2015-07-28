@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import urllib
 import os.path
+import platform
 
 PORT = 9222
 
@@ -129,8 +130,16 @@ class CustomHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
                 #returns a success message
                 self.wfile.write("wrote")
             pass
+        elif(msg == "get_os"):
+            #returns the os name
+            self.wfile.write(platform.system())
+            pass
+        elif(msg == "get_arch"):
+            #returns the architecture of machine
+            self.wfile.write(platform.machine())
+            pass
 
 httpd = SocketServer.TCPServer(("", PORT), CustomHandler)
 
-print "serving at port", PORT
+print "Serving at port", PORT, "on", platform.system(), ":", platform.machine()
 httpd.serve_forever()
