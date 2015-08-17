@@ -8,8 +8,13 @@ import tempfile
 import urllib
 import os.path
 import platform
+import threading
 
+import sys
+from PyQt4 import QtGui, QtCore
 PORT = 9222
+threads = []
+tray = []
 
 DUMMY_RESPONSE = "<h1>CodeRhinoP</h1>"
 
@@ -49,6 +54,7 @@ class CustomHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
             pass
         elif(msg == "send_programArduino"):
             #send program to arduino using avrdude
+            tray[0].show_message("CodeRhino", "Sending program to Arduino")
             sendport = postvars["port"][0]
             tmpdir = tempfile.gettempdir()
             filename = postvars["filename"][0]
@@ -61,26 +67,36 @@ class CustomHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
             if(stderr):
                 print stderr
                 self.wfile.write("error")
+                tray[0].show_message("CodeRhino", "Cannot send program to Arduino")
                 pass
             else:
                 self.wfile.write("sent")
+                tray[0].show_message("CodeRhino", "Program sent to Arduino")
                 pass
             pass
         elif(msg == "send_programNxt"):
             #send program to nxt brick using nbc
+            tray[0].show_message("CodeRhino", "Sending program to NXT")
             filename = postvars["filename"][0]
             tmpdir = tempfile.gettempdir()
             stderr = ""
-            subprocess.check_output(
-                "cd "+tmpdir+" && "+tmpdir+"\\nbc.exe -d "+filename,
-                stderr=subprocess.STDOUT,
-                shell=True)
+            try:
+                subprocess.check_call(
+                    tmpdir+"\\nbc.exe -d "+tmpdir+"\\"+filename,
+                    stderr=subprocess.STDOUT,
+                    shell=True)
+                print stderr
+            except subprocess.CalledProcessError as e:
+                tray[0].show_message("CodeRhino", "Cannot send program to NXT")
+                stderr=e
             if(stderr):
                 print stderr
                 self.wfile.write("error")
+                tray[0].show_message("CodeRhino", "Cannot send program to NXT")
                 pass
             else:
                 self.wfile.write("sent")
+                tray[0].show_message("CodeRhino", "Program sent to NXT")
                 pass
             pass
         elif(msg == "download"):
@@ -139,7 +155,53 @@ class CustomHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
             self.wfile.write(platform.machine())
             pass
 
-httpd = SocketServer.TCPServer(("", PORT), CustomHandler)
 
-print "Serving at port", PORT, "on", platform.system(), ":", platform.machine()
-httpd.serve_forever()
+class RightClickMenu(QtGui.QMenu):
+    def __init__(self, parent=None):
+        QtGui.QMenu.__init__(self, "File", parent)
+        
+        icon = QtGui.QIcon("exit.ico")
+        exitAction = QtGui.QAction(icon, "&Exit", self)
+        exitAction.triggered.connect(lambda: exit_program())
+        self.addAction(exitAction)
+        
+class SystemTrayIcon(QtGui.QSystemTrayIcon):
+    def __init__(self, parent=None):
+        QtGui.QSystemTrayIcon.__init__(self, parent)
+        self.setIcon(QtGui.QIcon("icon.ico"))
+        #Menu
+        self.right_menu = RightClickMenu()
+        self.setContextMenu(self.right_menu)
+    
+    def welcome(self):
+        self.showMessage("CodeRhinoP is running", "Now you can use client applications")
+    
+    def show_message(self, title, msg):
+        self.showMessage(title, msg)
+    
+    def show(self):
+        QtGui.QSystemTrayIcon.show(self)
+        QtCore.QTimer.singleShot(100, self.welcome)
+        
+def start_server():
+    print "Serving at port", PORT, "on", platform.system(), ":", platform.machine()
+    httpd = SocketServer.TCPServer(("localhost", PORT), CustomHandler)
+    httpd.serve_forever()
+
+def exit_program():
+    for thread in threads:
+        thread.stop()
+    sys.exit()
+    
+def main():
+    app = QtGui.QApplication([])
+    tray.append(SystemTrayIcon())
+    tray[0].show()
+    
+    threads.append(threading.Thread(target=start_server))
+    for thread in threads:
+        thread.start()
+    app.exec_()
+
+if __name__ == "__main__":
+    main()
