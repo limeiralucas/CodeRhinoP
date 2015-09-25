@@ -24,7 +24,7 @@ class SocketHandler(websocket.WebSocketHandler):
         command = data[u'message']
         # Download command
         if command == -1:
-            self.write_message(json.dumps{'request': -1, 'code': 'exited'})
+            self.write_message(json.dumps({'request': -1, 'code': 'exited'}))
         elif command == 0:
             print 'Downloading'
             url = data[u'url']
