@@ -13,10 +13,6 @@ class SocketHandler(websocket.WebSocketHandler):
     def check_origin(self, origin):
         return True
     
-    def report_file_downloaded(self):
-        self.write_message('true')
-        print "Downloaded"
-    
     def open(self):
         print 'Client connected'
             
