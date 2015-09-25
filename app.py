@@ -81,9 +81,9 @@ class SocketHandler(websocket.WebSocketHandler):
             if(stderr):
                 print stderr
                 self.write_message(json.dumps({'request': 3, 'code':'nxt_send_error', 'filename': filename}))
-                pass
-            print 'Program sent'
-            self.write_message(json.dumps({'request': 3, 'code':'nxt_send_ok', 'filename': filename}))
+            else:
+                print 'Program sent'
+                self.write_message(json.dumps({'request': 3, 'code':'nxt_send_ok', 'filename': filename}))
                     
             
 app = web.Application([
