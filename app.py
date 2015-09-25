@@ -27,7 +27,9 @@ class SocketHandler(websocket.WebSocketHandler):
         data = json.loads(json_data)
         command = data[u'message']
         # Download command
-        if command == 0:
+        if command == -1:
+            self.write_message(json.dumps{'request': -1, 'code': 'exited'})
+        elif command == 0:
             print 'Downloading'
             url = data[u'url']
             path = tempfile.gettempdir() + '/' + data[u'filename']
