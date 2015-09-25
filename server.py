@@ -1,207 +1,98 @@
-import SimpleHTTPServer
-import SocketServer
+from tornado import websocket, web, ioloop
 import json
-import serial.tools.list_ports
-import cgi
-import subprocess
 import tempfile
 import urllib
-import os.path
-import platform
-import threading
+import os
+import subprocess
 
-import sys
-from PyQt4 import QtGui, QtCore
-PORT = 9222
-threads = []
-tray = []
+class IndexHandler(web.RequestHandler):
+    def get(self):
+        self.render("<h4>CodeRhinoP says WELCOME</h4>")
 
-DUMMY_RESPONSE = "<h1>CodeRhinoP</h1>"
-
-class CustomHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
-    def do_GET(self):
-        print "GET REQUEST"
-        self.send_response(200)
-        self.send_header("Content-type", "text/html")
-        self.send_header("Access-Control-Allow-Origin","*")
-        self.send_header("Content-length", len(DUMMY_RESPONSE))
-        self.end_headers()
-        self.wfile.write(DUMMY_RESPONSE)
-        
-    def do_POST(self):
-        print "POST REQUEST"
-        
-        #interpret post data
-        length = int(self.headers['content-length'])
-        postvars = cgi.parse_qs(self.rfile.read(length), keep_blank_values=1)
-        msg = postvars["msg"][0]
-        
-        #set response headers
-        self.send_response(200)
-        self.send_header("Content-type", "application/json")
-        self.send_header("Access-Control-Allow-Origin","*")
-        self.end_headers()
-        #actions to each message
-        if(msg == "list_serialPorts"):
-            #list serial ports with something connected
-            ports = list(serial.tools.list_ports.comports())
-            ports_connected = []
-            for p in ports:
-                if(p[2] != 'n/a'):
-                    ports_connected.append(p)
-            json_response = json.dumps(ports_connected)
-            self.wfile.write(bytes(json_response));
-            pass
-        elif(msg == "send_programArduino"):
-            #send program to arduino using avrdude
-            tray[0].show_message("CodeRhino", "Sending program to Arduino")
-            sendport = postvars["port"][0]
-            tmpdir = tempfile.gettempdir()
-            filename = postvars["filename"][0]
-            stderr = ""
-            subprocess.check_output(
-                "cd "+tmpdir+" && "+tmpdir+"\\avrdude.exe -F -V -c arduino -p ATMEGA328P -P "+sendport+
-                " 115200 -U flash:w:"+tmpdir+"\\"+filename+":i",
-                stderr=subprocess.STDOUT,
-                shell=True)
-            if(stderr):
-                print stderr
-                self.wfile.write("error")
-                tray[0].show_message("CodeRhino", "Cannot send program to Arduino")
-                pass
+class SocketHandler(websocket.WebSocketHandler):
+    def check_origin(self, origin):
+        return True
+    
+    def report_file_downloaded(self):
+        self.write_message('true')
+        print "Downloaded"
+    
+    def open(self):
+        print 'Client connected'
+            
+    def on_close(self):
+        print 'Client disconnected'
+            
+    def on_message(self, json_data):
+        data = json.loads(json_data)
+        command = data[u'message']
+        # Download command
+        if command == 0:
+            print 'Downloading'
+            url = data[u'url']
+            path = tempfile.gettempdir() + '/' + data[u'filename']
+            try:
+                urllib.urlretrieve(url, path)
+            except:
+                print 'Download error'
+                self.write_message(json.dumps({'request': 0, 'code':'dl_error', 'url':url}))
+            print 'Downloaded'
+            self.write_message(json.dumps({'request': 0, 'code':'dl_ok', 'url':url}))
+        # Download if not exists
+        elif command == 1:
+            print 'Verifying'
+            url = data[u'url']
+            path = tempfile.gettempdir() + '/' + data[u'filename']
+            if os.path.isfile(path) == False:
+                try:
+                    urllib.urlretrieve(url, path)
+                except:
+                    print 'Download error'
+                    self.write_message(json.dumps({'request': 1, 'code':'dl_error', 'url':url}))
+                print 'Downloaded'
+                self.write_message(json.dumps({'request': 1, 'code':'dl_ok', 'url':url}))
             else:
-                self.wfile.write("sent")
-                tray[0].show_message("CodeRhino", "Program sent to Arduino")
-                pass
-            pass
-        elif(msg == "send_programNxt"):
-            #send program to nxt brick using nbc
-            tray[0].show_message("CodeRhino", "Sending program to NXT")
-            filename = postvars["filename"][0]
+                print 'File already exists'
+                self.write_message(json.dumps({'request': 1, 'code':'dl_file_already_exists', 'url':url}))
+        # Write on temporary directory (tmpdir)
+        elif command == 2:
+            path = tempfile.gettempdir() + '/' + data[u'filename']
+            data = data['bindata']
+            try:
+                with open(path, 'wb') as f:
+                    f.write(b''+data)
+            except:
+                self.write_message(json.dumps({'request': 2, 'code':'wr_error', 'url':url}))
+            print 'Wrote on tmpdir'
+            self.write_message(json.dumps({'request': 2, 'code':'wr_ok', 'url':url}))
+        elif command == 3:
+            filename = data[u'filename']
             tmpdir = tempfile.gettempdir()
+            path = tmpdir + '\\' + filename
             stderr = ""
             try:
                 subprocess.check_call(
-                    tmpdir+"\\nbc.exe -d "+tmpdir+"\\"+filename,
+                    tmpdir+"/nbc.exe -d "+path,
                     stderr=subprocess.STDOUT,
                     shell=True)
                 print stderr
             except subprocess.CalledProcessError as e:
-                tray[0].show_message("CodeRhino", "Cannot send program to NXT")
+                print 'Error sending program'
+                self.write_message(json.dumps({'request': 3, 'code':'nxt_send_error', 'filename': filename}))
                 stderr=e
             if(stderr):
                 print stderr
-                self.wfile.write("error")
-                tray[0].show_message("CodeRhino", "Cannot send program to NXT")
+                self.write_message(json.dumps({'request': 3, 'code':'nxt_send_error', 'filename': filename}))
                 pass
-            else:
-                self.wfile.write("sent")
-                tray[0].show_message("CodeRhino", "Program sent to NXT")
-                pass
-            pass
-        elif(msg == "download"):
-            #download a file
-            filename = postvars["filename"][0]
-            url = postvars["url"][0]
-            tmpdir = tempfile.gettempdir()
-            filedownloaded = urllib.URLopener()
-            try:
-                filedownloaded.retrieve(url, tmpdir+"/"+filename)
-            except:
-                self.wfile.write("error")
-            else:
-                #return a success message
-                self.wfile.write("downloaded")
-            pass
-        elif(msg == "download_ifNotExists"):
-            #download a file if it not exists (already downloaded)
-            filename = postvars["filename"][0]
-            url = postvars["url"][0]
-            tmpdir = tempfile.gettempdir()
-            if(os.path.isfile(tmpdir+"/"+filename) == False):
-                filedownloaded = urllib.URLopener()
-                try:
-                    filedownloaded.retrieve(url, tmpdir+"/"+filename)
-                except:
-                    #returns a error message
-                    self.wfile.write("error")
-                else:
-                    #returns a success message
-                    self.wfile.write("downloaded")
-            else:
-                self.wfile.write("downloaded")
-            pass
-        elif(msg == "write_tmpdir"):
-            #writes a binary file on temp dir
-            filename = postvars["filename"][0]
-            data = postvars["bindata"][0]
-            tmpdir = tempfile.gettempdir()
-            try:
-                with open(tmpdir+"/"+filename, "wb") as f:
-                    f.write(b''+data)
-            except:
-                #returns a error message
-                self.wfile.write("error")
-            else:
-                #returns a success message
-                self.wfile.write("wrote")
-            pass
-        elif(msg == "get_os"):
-            #returns the os name
-            self.wfile.write(platform.system())
-            pass
-        elif(msg == "get_arch"):
-            #returns the architecture of machine
-            self.wfile.write(platform.machine())
-            pass
+            print 'Program sent'
+            self.write_message(json.dumps({'request': 3, 'code':'nxt_send_ok', 'filename': filename}))
+                    
+            
+app = web.Application([
+    (r'/', IndexHandler),
+    (r'/ws', SocketHandler),
+])
 
-
-class RightClickMenu(QtGui.QMenu):
-    def __init__(self, parent=None):
-        QtGui.QMenu.__init__(self, "File", parent)
-        
-        icon = QtGui.QIcon("exit.ico")
-        exitAction = QtGui.QAction(icon, "&Exit", self)
-        exitAction.triggered.connect(lambda: exit_program())
-        self.addAction(exitAction)
-        
-class SystemTrayIcon(QtGui.QSystemTrayIcon):
-    def __init__(self, parent=None):
-        QtGui.QSystemTrayIcon.__init__(self, parent)
-        self.setIcon(QtGui.QIcon("icon.ico"))
-        #Menu
-        self.right_menu = RightClickMenu()
-        self.setContextMenu(self.right_menu)
-    
-    def welcome(self):
-        self.showMessage("CodeRhinoP is running", "Now you can use client applications")
-    
-    def show_message(self, title, msg):
-        self.showMessage(title, msg)
-    
-    def show(self):
-        QtGui.QSystemTrayIcon.show(self)
-        QtCore.QTimer.singleShot(100, self.welcome)
-        
-def start_server():
-    print "Serving at port", PORT, "on", platform.system(), ":", platform.machine()
-    httpd = SocketServer.TCPServer(("localhost", PORT), CustomHandler)
-    httpd.serve_forever()
-
-def exit_program():
-    for thread in threads:
-        thread.stop()
-    sys.exit()
-    
-def main():
-    app = QtGui.QApplication([])
-    tray.append(SystemTrayIcon())
-    tray[0].show()
-    
-    threads.append(threading.Thread(target=start_server))
-    for thread in threads:
-        thread.start()
-    app.exec_()
-
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    app.listen(8888)
+    ioloop.IOLoop.instance().start()
