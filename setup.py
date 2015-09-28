@@ -10,5 +10,5 @@ setup(
             "dll_excludes": ["MSVCP90.dll"]
         }
     }, 
-    windows=[{"script": 'server.py', "icon_resources": [(0, "icon.ico")]}]
+    windows=[{"script": 'app.py', "icon_resources": [(0, "icon.ico")]}]
 )
