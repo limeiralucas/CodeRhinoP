@@ -7,18 +7,18 @@ import subprocess
 
 class IndexHandler(web.RequestHandler):
     def get(self):
-        self.render("<h4>CodeRhinoP says WELCOME</h4>")
+        self.render("index.html")
 
 class SocketHandler(websocket.WebSocketHandler):
     def check_origin(self, origin):
         return True
-    
+
     def open(self):
         print 'Client connected'
-            
+
     def on_close(self):
         print 'Client disconnected'
-            
+
     def on_message(self, json_data):
         data = json.loads(json_data)
         command = data[u'message']
@@ -63,6 +63,7 @@ class SocketHandler(websocket.WebSocketHandler):
                 self.write_message(json.dumps({'request': 2, 'code':'wr_error', 'url':url}))
             print 'Wrote on tmpdir'
             self.write_message(json.dumps({'request': 2, 'code':'wr_ok', 'url':url}))
+        # Send program to NXT (Lego)
         elif command == 3:
             filename = data[u'filename']
             tmpdir = tempfile.gettempdir()
@@ -84,8 +85,8 @@ class SocketHandler(websocket.WebSocketHandler):
             else:
                 print 'Program sent'
                 self.write_message(json.dumps({'request': 3, 'code':'nxt_send_ok', 'filename': filename}))
-                    
-            
+
+
 app = web.Application([
     (r'/', IndexHandler),
     (r'/ws', SocketHandler),
